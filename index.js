@@ -1,5 +1,5 @@
 const express = require('express');
-const { MongoClient, ServerApiVersion, MongoRuntimeError } = require('mongodb');
+const { MongoClient, ServerApiVersion, MongoRuntimeError, Admin } = require('mongodb');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
@@ -41,6 +41,36 @@ const run =  async () => {
             res.send(services);
         });
 
+        app.get('/user', verifyJWT, async (req, res) => {
+          const users = await userCollection.find().toArray();
+          res.send(users);
+        });
+
+        // Send true if the user is admin
+        app.get('/admin/:email', async(req, res) => {
+          const email = req.params.email;
+          const user = await userCollection.findOne({email: email});
+          const isAdmin = user.role === 'admin';
+          res.send({admin: isAdmin})
+        })
+
+        app.put('/user/admin/:email', verifyJWT, async (req, res) => {
+          const email = req.params.email;
+          const requester = req.decoded.email;
+          const requesterAccount = await userCollection.findOne({email: requester});
+          if(requesterAccount.role === 'admin') {
+            const filter = {email: email};
+            const updateDoc = {
+              $set: {role: 'admin'}
+            };
+            const result = await userCollection.updateOne(filter, updateDoc);
+            return res.send(result);
+          }
+          else {
+            res.status(403).send({message: 'forbidden'});
+          }
+        })
+
         app.put('/user/:email', async (req, res) => {
           const email = req.params.email;
           const user = req.body;
@@ -50,7 +80,8 @@ const run =  async () => {
             $set: user,
           }
           const result = await userCollection.updateOne(filter, updateDoc, options);
-          res.send(result);
+          const token = jwt.sign({ email: email }, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '1h' })
+          res.send({ result, token });
         });
 
         // Get Available appointment
